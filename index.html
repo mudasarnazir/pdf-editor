@@ -22,9 +22,19 @@
 
     <div id="statusMsg" role="status"></div>
     <a id="downloadBtn" style="display:none" download="merged.pdf">Download Merged PDF</a>
+
+    <div id="previewModal" class="modal">
+  <div class="modal-content">
+    <button class="modal-close" aria-label="Close Preview">&times;</button>
+    <canvas id="previewCanvas" width="500" height="700"></canvas>
+  </div>
+</div>
+
   </main>
 
   <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
   <script src="script.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+
 </body>
 </html>

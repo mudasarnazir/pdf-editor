@@ -1,32 +1,29 @@
+/* === Base Layout === */
 body {
   font-family: 'Inter', Arial, sans-serif;
   background: #f6f8fa;
   margin: 0;
   min-height: 100vh;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
-}body {
-  font-family: 'Inter', Arial, sans-serif;
-  background: #f6f8fa;
-  margin: 0;
-  min-height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  padding: 0 16px;
+  box-sizing: border-box;
 }
 
 .container {
-  max-width: 400px;
   width: 100%;
+  max-width: 1200px;
   margin: 48px auto;
   background: #fff;
   border-radius: 16px;
   box-shadow: 0 4px 24px rgba(0,0,0,0.08);
-  padding: 32px 24px;
+  padding: 32px;
   text-align: center;
+  box-sizing: border-box;
 }
 
+/* === Headings === */
 h1 {
   font-weight: 600;
   font-size: 2rem;
@@ -34,13 +31,13 @@ h1 {
   color: #222;
 }
 
+/* === Drop Area & Button === */
 #dropArea {
   background: #f0f4f8;
   border: 2px dashed #b3c2d1;
   border-radius: 12px;
   padding: 32px 16px;
   margin-bottom: 24px;
-  position: relative;
   transition: border-color 0.2s;
 }
 
@@ -69,14 +66,32 @@ h1 {
   display: none;
 }
 
+/* === File List === */
 .file-list {
   display: flex;
-  gap: 16px;
-  margin: 0 0 24px 0;
+  flex-direction: row;
   overflow-x: auto;
+  white-space: nowrap;
+  gap: 16px;
   padding-bottom: 8px;
+  margin-bottom: 24px;
+  flex-shrink: 0;
 }
 
+.file-list::-webkit-scrollbar {
+  height: 8px;
+}
+
+.file-list::-webkit-scrollbar-thumb {
+  background: #b3c2d1;
+  border-radius: 4px;
+}
+
+.file-list::-webkit-scrollbar-track {
+  background: #f0f4f8;
+}
+
+/* === File Tile === */
 .file-tile {
   position: relative;
   background: #f6f8fa;
@@ -90,6 +105,7 @@ h1 {
   padding: 16px 8px 8px 8px;
 }
 
+/* === File Preview === */
 .file-preview {
   width: 100px;
   height: 140px;
@@ -99,19 +115,24 @@ h1 {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 2rem;
-  color: #b3c2d1;
-  user-select: none;
+  overflow: hidden;
+  border: 2px solid #b3c2d1;
 }
 
+/* === File Name === */
 .file-name {
-  font-size: 0.95rem;
+  font-size: 0.75rem;
   color: #333;
   text-align: center;
   margin-top: 4px;
-  word-break: break-all;
+  word-break: break-word;
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
+/* === Remove and Zoom Buttons === */
 .file-remove {
   position: absolute;
   top: 6px;
@@ -129,6 +150,17 @@ h1 {
   color: #ff4d4f;
 }
 
+/* This reuses the same styling for Zoom button */
+.file-remove[title="Zoom Preview"] {
+  right: 30px;
+  font-size: 1rem;
+}
+
+.file-remove[title="Zoom Preview"]:hover {
+  color: #007aff;
+}
+
+/* === Merge Button === */
 #mergeBtn {
   background: #28c76f;
   color: #fff;
@@ -147,6 +179,7 @@ h1 {
   cursor: not-allowed;
 }
 
+/* === Status Message & Download Button === */
 #statusMsg {
   font-size: 0.98rem;
   color: #007aff;
@@ -170,114 +203,71 @@ h1 {
   background: #e09c00;
 }
 
-.container {
-  max-width: 400px;
-  margin: 48px auto;
-  background: #fff;
-  border-radius: 16px;
-  box-shadow: 0 4px 24px rgba(0,0,0,0.08);
-  padding: 32px 24px;
-  text-align: center;
-}
-
-h1 {
-  font-weight: 600;
-  font-size: 2rem;
-  margin-bottom: 24px;
-  color: #222;
-}
-
-#dropArea {
-  background: #f0f4f8;
-  border: 2px dashed #b3c2d1;
-  border-radius: 12px;
-  padding: 32px 16px;
-  margin-bottom: 24px;
-  position: relative;
-  transition: border-color 0.2s;
-}
-
-#dropArea.dragover {
-  border-color: #007aff;
-  background: #e6f0ff;
-}
-
-#addFilesBtn {
-  background: #007aff;
-  color: #fff;
-  border: none;
-  border-radius: 8px;
-  padding: 12px 24px;
-  font-size: 1rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background 0.2s;
-}
-
-#addFilesBtn:hover {
-  background: #005bb5;
-}
-
-#fileInput {
+/* === Modal for Zoom Preview === */
+.modal {
   display: none;
-}
-
-#fileList {
-  list-style: none;
-  padding: 0;
-  margin: 0 0 24px 0;
-  text-align: left;
-}
-
-#fileList li {
-  background: #f6f8fa;
-  border-radius: 6px;
-  padding: 8px 12px;
-  margin-bottom: 8px;
-  font-size: 0.98rem;
-  color: #333;
-  display: flex;
+  position: fixed;
+  z-index: 999;
+  left: 0; top: 0;
+  width: 100%; height: 100%;
+  background-color: rgba(0,0,0,0.6);
+  justify-content: center;
   align-items: center;
-  justify-content: space-between;
 }
 
-#mergeBtn {
-  background: #28c76f;
-  color: #fff;
+.modal-content {
+  background: white;
+  padding: 16px;
+  border-radius: 12px;
+  position: relative;
+  max-width: 90vw;
+  max-height: 90vh;
+  overflow: auto;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.3);
+}
+
+.modal-close {
+  position: absolute;
+  top: 8px;
+  right: 12px;
+  background: none;
   border: none;
-  border-radius: 8px;
-  padding: 12px 24px;
-  font-size: 1rem;
-  font-weight: 600;
+  font-size: 1.5rem;
   cursor: pointer;
-  transition: background 0.2s;
-  margin-bottom: 16px;
+  color: #555;
 }
 
-#mergeBtn:disabled {
-  background: #b3c2d1;
-  cursor: not-allowed;
-}
-
-#statusMsg {
-  font-size: 0.98rem;
-  color: #007aff;
-  margin-bottom: 12px;
-  min-height: 20px;
-}
-
+/* === Centered Buttons === */
+#mergeBtn,
+#statusMsg,
 #downloadBtn {
-  display: inline-block;
-  background: #ffb400;
-  color: #222;
-  border-radius: 8px;
-  padding: 12px 24px;
-  font-weight: 600;
-  text-decoration: none;
-  margin-top: 8px;
-  transition: background 0.2s;
+  display: block;
+  margin-left: auto;
+  margin-right: auto;
 }
 
-#downloadBtn:hover {
-  background: #e09c00;
+/* === Responsive === */
+@media (max-width: 768px) {
+  .container {
+    max-width: 95%;
+    padding: 24px 16px;
+  }
+}
+.file-progress {
+  width: 100%;
+  margin-top: 6px;
+}
+
+.progress-bar-bg {
+  background: #e0e7ef;
+  border-radius: 4px;
+  height: 8px;
+  overflow: hidden;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  background: #28c76f;
+  width: 0%;
+  transition: width 0.3s ease;
 }
