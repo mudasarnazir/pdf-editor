@@ -5,15 +5,17 @@ const mergeBtn = document.getElementById("mergeBtn");
 const statusMsg = document.getElementById("statusMsg");
 const downloadBtn = document.getElementById("downloadBtn");
 let files = [];
+let uploaded = []; // same length as files, true if uploaded
 
 addFilesBtn.addEventListener("click", () => fileInput.click());
 
 fileInput.addEventListener("change", async () => {
   const selected = [...fileInput.files].filter(f => f.type === "application/pdf");
   files = files.concat(selected);
+  uploaded = uploaded.concat(selected.map(() => false)); // mark new files as not uploaded
   fileInput.value = null;
   updateFileList();
-  await uploadFilesSequentially(); // Automatically start upload after adding
+  await uploadNewFiles(selected.length); // Only upload new files
 });
 
 
@@ -23,7 +25,38 @@ function updateFileList() {
   files.forEach((file, i) => {
     const tile = document.createElement("div");
     tile.className = "file-tile";
+    tile.draggable = true;
+    tile.dataset.index = i;
 
+    // --- Drag and Drop Events ---
+    tile.addEventListener("dragstart", (e) => {
+      e.dataTransfer.setData("text/plain", i);
+      tile.classList.add("dragging");
+    });
+    tile.addEventListener("dragend", () => {
+      tile.classList.remove("dragging");
+    });
+    tile.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      tile.classList.add("drag-over");
+    });
+    tile.addEventListener("dragleave", () => {
+      tile.classList.remove("drag-over");
+    });
+    tile.addEventListener("drop", (e) => {
+      e.preventDefault();
+      tile.classList.remove("drag-over");
+      const fromIndex = Number(e.dataTransfer.getData("text/plain"));
+      const toIndex = Number(tile.dataset.index);
+      if (fromIndex !== toIndex) {
+        // Swap files and uploaded status
+        [files[fromIndex], files[toIndex]] = [files[toIndex], files[fromIndex]];
+        [uploaded[fromIndex], uploaded[toIndex]] = [uploaded[toIndex], uploaded[fromIndex]];
+        updateFileList();
+      }
+    });
+
+    // --- PDF Preview ---
     const preview = document.createElement("div");
     preview.className = "file-preview";
     const canvas = document.createElement("canvas");
@@ -46,29 +79,30 @@ function updateFileList() {
     reader.readAsArrayBuffer(file);
     preview.appendChild(canvas);
 
-    
+    // --- File Name ---
     const name = document.createElement("div");
     name.className = "file-name";
-    name.textContent = file.name;
-name.textContent = file.name.length > 20
-  ? file.name.slice(0, 17) + "..."
-  : file.name;
-    // Remove Button
+    name.textContent = file.name.length > 20
+      ? file.name.slice(0, 17) + "..."
+      : file.name;
+
+    // --- Remove Button ---
     const removeBtn = document.createElement("button");
     removeBtn.className = "file-remove";
     removeBtn.textContent = "✕";
     removeBtn.title = "Remove file";
     removeBtn.onclick = () => {
       files.splice(i, 1);
+      uploaded.splice(i, 1);
       updateFileList();
     };
 
-    // Zoom Button
+    // --- Zoom Button ---
     const zoomBtn = document.createElement("button");
     zoomBtn.className = "file-remove";
     zoomBtn.textContent = "🔍";
     zoomBtn.title = "Zoom Preview";
-    zoomBtn.style.right = "30px"; // push left of ✕ button
+    zoomBtn.style.right = "30px";
     zoomBtn.onclick = () => {
       const modal = document.getElementById("previewModal");
       const previewCanvas = document.getElementById("previewCanvas");
@@ -79,7 +113,7 @@ name.textContent = file.name.length > 20
         const typedArray = new Uint8Array(readerZoom.result);
         pdfjsLib.getDocument(typedArray).promise.then(pdfDoc => {
           pdfDoc.getPage(1).then(page => {
-            const viewport = page.getViewport({ scale: 2.0 }); // Zoom scale
+            const viewport = page.getViewport({ scale: 2.0 });
             previewCanvas.width = viewport.width;
             previewCanvas.height = viewport.height;
             page.render({ canvasContext: ctx, viewport });
@@ -90,10 +124,21 @@ name.textContent = file.name.length > 20
       readerZoom.readAsArrayBuffer(file);
     };
 
+    // --- Progress Bar ---
+    const progress = document.createElement("div");
+    progress.className = "file-progress";
+    progress.innerHTML = `
+      <div class="progress-bar-bg">
+        <div class="progress-bar-fill" style="width: 0%"></div>
+      </div>
+    `;
+
+    // --- Append Elements ---
     tile.appendChild(removeBtn);
     tile.appendChild(zoomBtn);
     tile.appendChild(preview);
     tile.appendChild(name);
+    tile.appendChild(progress);
     fileList.appendChild(tile);
   });
 
@@ -101,7 +146,6 @@ name.textContent = file.name.length > 20
   statusMsg.textContent = "";
   downloadBtn.style.display = "none";
 }
-
 document.querySelector(".modal-close").addEventListener("click", () => {
   document.getElementById("previewModal").style.display = "none";
 });
@@ -164,7 +208,7 @@ async function uploadFilesSequentially() {
     const progressFill = tile.querySelector(".progress-bar-fill");
 
     try {
-      await simulateUpload(file, progress => {
+      await realUpload(file, progress => {
         progressFill.style.width = `${progress}%`;
       });
 
@@ -177,28 +221,39 @@ async function uploadFilesSequentially() {
 
   statusMsg.textContent = "Upload complete.";
 }
-function simulateUpload(file, onProgress) {
+function realUpload(file, onProgress) {
   return new Promise((resolve, reject) => {
-    const total = 100;
-    let progress = 0;
-    const failChance = 0.2; // simulate 20% failure chance
+    const xhr = new XMLHttpRequest();
 
-    const interval = setInterval(() => {
-      progress += Math.floor(Math.random() * 10) + 5;
-      if (progress >= total) {
-        clearInterval(interval);
-        if (Math.random() < failChance) {
-          reject(new Error("Simulated upload failure"));
-        } else {
-          onProgress(100);
-          resolve();
-        }
-      } else {
-        onProgress(progress);
+    // Replace this with your actual upload URL
+    xhr.open("POST", "https://your-upload-server.com/upload");
+
+    // Progress tracking
+    xhr.upload.onprogress = function (e) {
+      if (e.lengthComputable) {
+        const percent = Math.round((e.loaded / e.total) * 100);
+        onProgress(percent);
       }
-    }, 200);
+    };
+
+    xhr.onload = function () {
+      if (xhr.status === 200) {
+        resolve();
+      } else {
+        reject(new Error("Upload failed: " + xhr.status));
+      }
+    };
+
+    xhr.onerror = function () {
+      reject(new Error("Network error during upload"));
+    };
+
+    const formData = new FormData();
+    formData.append("file", file);
+    xhr.send(formData);
   });
 }
+
 async function uploadFilesSequentially() {
   if (files.length === 0) return;
 
@@ -210,13 +265,67 @@ async function uploadFilesSequentially() {
     const progressFill = tile.querySelector(".progress-bar-fill");
 
     try {
-      await simulateUpload(file, progress => {
+      await realUpload(file, progress => {
         progressFill.style.width = `${progress}%`;
       });
 
       progressFill.style.background = "#28c76f"; // success color
     } catch (err) {
       progressFill.style.background = "#ff4d4f"; // fail color
+      console.error(`Upload failed for ${file.name}:`, err);
+    }
+  }
+
+  statusMsg.textContent = "Upload complete.";
+}
+async function uploadNewFiles(newCount) {
+  if (newCount === 0) return;
+
+  statusMsg.textContent = "Uploading files...";
+
+  // Only upload the last newCount files
+  for (let i = files.length - newCount; i < files.length; i++) {
+    const file = files[i];
+    const tile = fileList.children[i];
+    const progressFill = tile.querySelector(".progress-bar-fill");
+
+    try {
+      await realUpload(file, progress => {
+        progressFill.style.width = `${progress}%`;
+      });
+
+      progressFill.style.background = "#28c76f"; // success color
+      uploaded[i] = true;
+    } catch (err) {
+      progressFill.style.background = "#ff4d4f"; // fail color
+      uploaded[i] = false;
+      console.error(`Upload failed for ${file.name}:`, err);
+    }
+  }
+
+  statusMsg.textContent = "Upload complete.";
+}
+  
+async function uploadNewFiles(newCount) {
+  if (newCount === 0) return;
+
+  statusMsg.textContent = "Uploading files...";
+
+  for (let i = files.length - newCount; i < files.length; i++) {
+    const file = files[i];
+    const tile = fileList.children[i];
+    const progressFill = tile.querySelector(".progress-bar-fill");
+
+    try {
+      await realUpload(file, progress => {
+        progressFill.style.width = `${progress}%`;
+      });
+
+      progressFill.style.background = "#28c76f"; // success
+      uploaded[i] = true;
+    } catch (err) {
+      progressFill.style.background = "#ff4d4f"; // fail
+      uploaded[i] = false;
       console.error(`Upload failed for ${file.name}:`, err);
     }
   }

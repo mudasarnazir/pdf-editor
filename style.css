@@ -271,3 +271,10 @@ h1 {
   width: 0%;
   transition: width 0.3s ease;
 }
+.file-tile.dragging {
+  opacity: 0.5;
+  border: 2px dashed #007aff;
+}
+.file-tile.drag-over {
+  border: 2px solid #007aff;
+}
