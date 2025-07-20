@@ -2,21 +2,15 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Basic PDF Tools</title>
-  <link rel="stylesheet" href="styles.css">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PDF Editor</title>
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <h1>Simple PDF Tools</h1>
-  <div class="tools">
-    <button onclick="showTool('merge')">Merge PDFs</button>
-    <button onclick="showTool('split')">Split PDF</button>
-    <button onclick="showTool('compress')">Compress PDF</button>
-    <button onclick="showTool('imagesToPdf')">Images to PDF</button>
+  <div id="pdf-editor-container">
+    <!-- Your PDF editor content goes here -->
   </div>
-
-  <div id="toolContainer"></div>
-
-  <script src="libs/pdf-lib.min.js"></script>
+  <script src="pdf-lib.min.js"></script>
   <script src="script.js"></script>
 </body>
 </html>
