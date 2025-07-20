@@ -1,71 +1,85 @@
-function showTool(tool) {
-  const container = document.getElementById('toolContainer');
-  container.innerHTML = ''; // clear previous content
+const addFilesBtn = document.getElementById("addFilesBtn");
+const fileInput = document.getElementById("fileInput");
+const fileList = document.getElementById("fileList");
+const mergeBtn = document.getElementById("mergeBtn");
+const statusMsg = document.getElementById("statusMsg");
+const downloadBtn = document.getElementById("downloadBtn");
+let files = [];
 
-  if (tool === 'merge') {
-    container.innerHTML = `
-      <p>Select multiple PDF files to merge:</p>
-      <input type="file" id="pdfMergeInput" accept="application/pdf" multiple />
-      <button id="mergeBtn" disabled>Merge PDFs</button>
-      <div id="status"></div>
-    `;
+addFilesBtn.addEventListener("click", () => fileInput.click());
 
-    const input = document.getElementById('pdfMergeInput');
-    const mergeBtn = document.getElementById('mergeBtn');
-    const statusDiv = document.getElementById('status');
+fileInput.addEventListener("change", () => {
+  const selected = [...fileInput.files].filter(f => f.type === "application/pdf");
+  files = files.concat(selected);
+  fileInput.value = null;
+  updateFileList();
+});
 
-    input.addEventListener('change', () => {
-      mergeBtn.disabled = input.files.length < 2;
-      statusDiv.textContent = '';
-    });
+function updateFileList() {
+  fileList.innerHTML = "";
+  files.forEach((file, i) => {
+    const tile = document.createElement("div");
+    tile.className = "file-tile";
 
-    mergeBtn.addEventListener('click', async () => {
-      if (input.files.length < 2) {
-        statusDiv.textContent = 'Please select at least two PDF files.';
-        return;
-      }
+    // Rectangle preview (just an icon/text for now)
+    const preview = document.createElement("div");
+    preview.className = "file-preview";
+    preview.textContent = "PDF"; // You can use an icon here
 
-      statusDiv.textContent = 'Merging PDFs, please wait...';
-      mergeBtn.disabled = true;
-      input.disabled = true;
+    // Filename at the bottom
+    const name = document.createElement("div");
+    name.className = "file-name";
+    name.textContent = file.name;
 
-      try {
-        const mergedPdf = await PDFLib.PDFDocument.create();
-        for (const file of input.files) {
-          const arrayBuffer = await file.arrayBuffer();
-          const pdf = await PDFLib.PDFDocument.load(arrayBuffer);
-          const copiedPages = await mergedPdf.copyPages(pdf, pdf.getPageIndices());
-          copiedPages.forEach((page) => mergedPdf.addPage(page));
-        }
+    // Remove button (top right corner)
+    const removeBtn = document.createElement("button");
+    removeBtn.className = "file-remove";
+    removeBtn.textContent = "✕";
+    removeBtn.title = "Remove file";
+    removeBtn.onclick = () => {
+      files.splice(i, 1);
+      updateFileList();
+    };
 
-        const mergedBytes = await mergedPdf.save();
-        statusDiv.innerHTML = 'PDFs merged successfully!';
+    tile.appendChild(removeBtn);
+    tile.appendChild(preview);
+    tile.appendChild(name);
+    fileList.appendChild(tile);
+  });
 
-        // Create download button
-        const downloadBtn = document.createElement('button');
-        downloadBtn.textContent = 'Download Merged PDF';
-        downloadBtn.id = 'downloadBtn';
-        container.appendChild(downloadBtn);
+  mergeBtn.disabled = files.length < 2;
+  statusMsg.textContent = "";
+  downloadBtn.style.display = "none";
+}
 
-        downloadBtn.onclick = () => download(mergedBytes, 'merged.pdf');
-      } catch (e) {
-        statusDiv.textContent = 'Error merging PDFs: ' + e.message;
-      } finally {
-        mergeBtn.disabled = false;
-        input.disabled = false;
-      }
-    });
-  } else {
-    container.innerHTML = `<p><em>The "${tool}" tool is coming soon!</em></p>`;
+mergeBtn.addEventListener("click", async () => {
+  if (files.length < 2) return;
+
+  mergeBtn.disabled = true;
+  statusMsg.textContent = "Merging PDFs, please wait...";
+
+  try {
+    const mergedPdf = await PDFLib.PDFDocument.create();
+
+    for (const file of files) {
+      const buffer = await file.arrayBuffer();
+      const pdf = await PDFLib.PDFDocument.load(buffer);
+      const pages = await mergedPdf.copyPages(pdf, pdf.getPageIndices());
+      pages.forEach(p => mergedPdf.addPage(p));
+    }
+
+    const mergedBytes = await mergedPdf.save();
+    const blob = new Blob([mergedBytes], { type: "application/pdf" });
+
+    const url = URL.createObjectURL(blob);
+    downloadBtn.href = url;
+    downloadBtn.download = "merged.pdf";
+    downloadBtn.style.display = "inline-block";
+    statusMsg.textContent = "Merge successful!";
+  } catch (err) {
+    console.error(err);
+    statusMsg.textContent = "Error during merge: " + err.message;
   }
-}
 
-function download(bytes, filename) {
-  const blob = new Blob([bytes], { type: 'application/pdf' });
-  const link = document.createElement('a');
-  link.href = URL.createObjectURL(blob);
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-}
+  mergeBtn.disabled = false;
+});
