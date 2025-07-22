@@ -332,3 +332,24 @@ async function uploadNewFiles(newCount) {
 
   statusMsg.textContent = "Upload complete.";
 }
+const resetBtn = document.getElementById("resetBtn");
+
+resetBtn.addEventListener("click", () => {
+  // Clear files array or single file
+  if (Array.isArray(files)) {
+    files = [];
+  } else {
+    files = null;
+  }
+
+  // Reset UI elements
+  if (fileList) fileList.innerHTML = "";
+  if (downloadBtn) downloadBtn.style.display = "none";
+  if (statusMsg) statusMsg.textContent = "";
+  if (compressBtn) compressBtn.disabled = true;
+  if (splitBtn) splitBtn.disabled = true;
+  if (mergeBtn) mergeBtn.disabled = true;
+
+  // Reset file input value so you can re-upload same files if needed
+  if (fileInput) fileInput.value = null;
+});

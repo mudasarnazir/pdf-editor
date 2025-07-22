@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Compress PDFs</title>
+  <link rel="stylesheet" href="style.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet" />
+</head>
+<body>
+<header class="top-bar">
+  <div class="container" style="display:flex; justify-content: space-between; align-items: center; padding: 12px 0;">
+    <div>
+      <a href="index.html" class="nav-link">🏠 Home</a>
+    </div>
+    <div>
+      <button id="resetBtn" class="btn-reset" type="button">Reset</button>
+    </div>
+  </div>
+</header>
+
+  <main class="container">
+    <h1>Compress PDFs</h1>
+
+    <section id="dropArea" tabindex="0">
+      <button id="addFilesBtn" type="button">Add PDF Files</button>
+      <input type="file" id="fileInput" accept="application/pdf" multiple aria-label="Select PDF files" />
+    </section>
+
+    <div id="fileList" class="file-list"></div>
+
+    <div style="margin-bottom: 16px; text-align: left; max-width: 400px; margin-left: auto; margin-right: auto;">
+      <label for="dpiInput">DPI (Dots Per Inch):</label>
+      <input id="dpiInput" type="number" min="72" max="300" value="144" style="width: 100%; margin-bottom: 12px; padding: 6px; border-radius: 6px; border: 1px solid #ccc;" />
+
+      <label for="qualityInput">Image Quality (%):</label>
+      <input id="qualityInput" type="number" min="10" max="100" value="75" style="width: 100%; margin-bottom: 12px; padding: 6px; border-radius: 6px; border: 1px solid #ccc;" />
+
+      <label>Color Mode:</label><br />
+      <label><input type="radio" name="colorMode" value="original" checked /> No Change</label><br />
+      <label><input type="radio" name="colorMode" value="grey" /> Greyscale</label>
+    </div>
+
+    <button id="compressBtn" disabled type="button">Compress PDFs</button>
+    <div id="statusMsg"></div>
+    <a id="downloadBtn" style="display:none">Download Compressed PDFs</a>
+
+    <div id="previewModal" class="modal">
+      <div class="modal-content">
+        <button class="modal-close" aria-label="Close Preview">&times;</button>
+        <canvas id="previewCanvas" width="500" height="700"></canvas>
+      </div>
+    </div>
+  </main>
+
+  <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <script>
+    const addFilesBtn = document.getElementById("addFilesBtn");
+    const fileInput = document.getElementById("fileInput");
+    const fileList = document.getElementById("fileList");
+    const compressBtn = document.getElementById("compressBtn");
+    const statusMsg = document.getElementById("statusMsg");
+    const downloadBtn = document.getElementById("downloadBtn");
+    const dpiInput = document.getElementById("dpiInput");
+    const qualityInput = document.getElementById("qualityInput");
+
+    let files = [];
+
+    addFilesBtn.addEventListener("click", () => fileInput.click());
+
+    fileInput.addEventListener("change", () => {
+      const selected = [...fileInput.files].filter(f => f.type === "application/pdf");
+      files = files.concat(selected);
+      updateFileList();
+      compressBtn.disabled = files.length === 0;
+      downloadBtn.style.display = "none";
+      statusMsg.textContent = "";
+      fileInput.value = null;
+    });
+
+    function updateFileList() {
+      fileList.innerHTML = "";
+      files.forEach((file, i) => {
+        const tile = document.createElement("div");
+        tile.className = "file-tile";
+
+        const preview = document.createElement("div");
+        preview.className = "file-preview";
+        const canvas = document.createElement("canvas");
+        canvas.width = 100;
+        canvas.height = 140;
+
+        const reader = new FileReader();
+        reader.onload = function () {
+          const typedArray = new Uint8Array(reader.result);
+          pdfjsLib.getDocument(typedArray).promise.then(pdfDoc => {
+            pdfDoc.getPage(1).then(page => {
+              const viewport = page.getViewport({ scale: 0.5 });
+              const context = canvas.getContext("2d");
+              canvas.width = viewport.width;
+              canvas.height = viewport.height;
+              page.render({ canvasContext: context, viewport });
+            });
+          });
+        };
+        reader.readAsArrayBuffer(file);
+        preview.appendChild(canvas);
+
+        const name = document.createElement("div");
+        name.className = "file-name";
+        name.textContent = file.name.length > 20 ? file.name.slice(0, 17) + "..." : file.name;
+
+        const removeBtn = document.createElement("button");
+        removeBtn.className = "file-remove";
+        removeBtn.textContent = "✕";
+        removeBtn.title = "Remove file";
+        removeBtn.onclick = () => {
+          files.splice(i, 1);
+          updateFileList();
+          compressBtn.disabled = files.length === 0;
+          downloadBtn.style.display = "none";
+          statusMsg.textContent = "";
+        };
+
+        const zoomBtn = document.createElement("button");
+        zoomBtn.className = "file-remove";
+        zoomBtn.textContent = "🔍";
+        zoomBtn.title = "Zoom Preview";
+        zoomBtn.style.right = "30px";
+        zoomBtn.onclick = () => {
+          const modal = document.getElementById("previewModal");
+          const previewCanvas = document.getElementById("previewCanvas");
+          const ctx = previewCanvas.getContext("2d");
+
+          const readerZoom = new FileReader();
+          readerZoom.onload = function () {
+            const typedArray = new Uint8Array(readerZoom.result);
+            pdfjsLib.getDocument(typedArray).promise.then(pdfDoc => {
+              pdfDoc.getPage(1).then(page => {
+                const viewport = page.getViewport({ scale: 2.0 });
+                previewCanvas.width = viewport.width;
+                previewCanvas.height = viewport.height;
+                page.render({ canvasContext: ctx, viewport });
+                modal.style.display = "flex";
+              });
+            });
+          };
+          readerZoom.readAsArrayBuffer(file);
+        };
+
+        tile.appendChild(removeBtn);
+        tile.appendChild(zoomBtn);
+        tile.appendChild(preview);
+        tile.appendChild(name);
+        fileList.appendChild(tile);
+      });
+    }
+
+    document.querySelector(".modal-close").addEventListener("click", () => {
+      document.getElementById("previewModal").style.display = "none";
+    });
+
+    window.addEventListener("click", (e) => {
+      const modal = document.getElementById("previewModal");
+      if (e.target === modal) {
+        modal.style.display = "none";
+      }
+    });
+
+    compressBtn.addEventListener("click", async () => {
+      if (files.length === 0) return;
+
+      const dpi = parseInt(dpiInput.value) || 144;
+      const qualityPercent = parseInt(qualityInput.value) || 75;
+      const colorMode = document.querySelector('input[name="colorMode"]:checked').value;
+
+      statusMsg.textContent = "Compressing PDFs... please wait.";
+      compressBtn.disabled = true;
+      downloadBtn.style.display = "none";
+
+      const zip = new JSZip();
+
+      try {
+        for (let f = 0; f < files.length; f++) {
+          const file = files[f];
+          const arrayBuffer = await file.arrayBuffer();
+          const pdfDoc = await PDFLib.PDFDocument.load(arrayBuffer);
+
+          const compressedPdf = await PDFLib.PDFDocument.create();
+
+          const typedArray = new Uint8Array(arrayBuffer);
+          const loadingTask = pdfjsLib.getDocument(typedArray);
+          const pdf = await loadingTask.promise;
+
+          for (let i = 1; i <= pdf.numPages; i++) {
+            const page = await pdf.getPage(i);
+            const viewport = page.getViewport({ scale: dpi / 72 });
+
+            const canvas = document.createElement("canvas");
+            canvas.width = viewport.width;
+            canvas.height = viewport.height;
+            const ctx = canvas.getContext("2d");
+
+            await page.render({ canvasContext: ctx, viewport }).promise;
+
+            if (colorMode === "grey") {
+              const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+              for (let j = 0; j < imgData.data.length; j += 4) {
+                const r = imgData.data[j];
+                const g = imgData.data[j + 1];
+                const b = imgData.data[j + 2];
+                const v = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+                imgData.data[j] = imgData.data[j + 1] = imgData.data[j + 2] = v;
+              }
+              ctx.putImageData(imgData, 0, 0);
+            }
+
+            const jpegQuality = Math.min(Math.max(qualityPercent / 100, 0.1), 1);
+            const dataUrl = canvas.toDataURL("image/jpeg", jpegQuality);
+
+            const base64 = dataUrl.split(",")[1];
+            const binary = atob(base64);
+            const length = binary.length;
+            const imgBytes = new Uint8Array(length);
+            for (let k = 0; k < length; k++) {
+              imgBytes[k] = binary.charCodeAt(k);
+            }
+
+            const img = await compressedPdf.embedJpg(imgBytes);
+            const imgDims = img.scale(1);
+
+            const newPage = compressedPdf.addPage([imgDims.width, imgDims.height]);
+            newPage.drawImage(img, {
+              x: 0,
+              y: 0,
+              width: imgDims.width,
+              height: imgDims.height,
+            });
+          }
+
+          const compressedBytes = await compressedPdf.save();
+          zip.file(file.name.replace(/\.pdf$/i, '') + "-compressed.pdf", compressedBytes);
+        }
+
+        const zipBlob = await zip.generateAsync({ type: "blob" });
+        const zipUrl = URL.createObjectURL(zipBlob);
+
+        downloadBtn.href = zipUrl;
+        downloadBtn.download = "compressed-pdfs.zip";
+        downloadBtn.style.display = "inline-block";
+        statusMsg.textContent = "Compression complete! Download your ZIP file.";
+      } catch (error) {
+        statusMsg.textContent = "Error during compression: " + error.message;
+        console.error(error);
+      } finally {
+        compressBtn.disabled = false;
+      }
+    });
+  </script>
+<footer class="bottom-bar">
+  <div class="container" style="text-align: center; padding: 12px 0; font-size: 0.85rem; color: #666;">
+    &copy; 2025 Mudasar Nazir | Developed with ❤️ | <a href="mailto:mudasar@example.com">Contact</a>
+  </div>
+</footer>
+
+</body>
+</html>
