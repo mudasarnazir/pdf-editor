@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Merge & Page Picker — PDF Studio</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0b1220; --fg:#e5e7eb; --muted:#9aa4b2; --line:#1f2937;
+    --panel:#0f172a; --card:#111827; --brand:#3b82f6; --danger:#ef4444; --chip:#0b1220;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}
+  a{color:inherit;text-decoration:none}
+  .wrap{max-width:1280px;margin:28px auto;padding:0 16px}
+  header{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
+  .back{color:#93c5fd}
+  .bar{display:flex;gap:8px;flex-wrap:wrap}
+  button{border:1px solid #ffffff20;background:#ffffff10;color:#fff;padding:9px 14px;border-radius:10px;font-weight:600}
+  button.primary{background:var(--brand);border-color:transparent}
+  button.ghost{background:transparent}
+  button:disabled{opacity:.6}
+  .hint{font-size:12px;color:var(--muted)}
+  h2{margin-top:22px;margin-bottom:8px;font-size:16px}
+  .grid{
+    background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px;
+    display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));
+    box-shadow:0 12px 28px rgba(0,0,0,.35)
+  }
+  .item{position:relative;border:1px solid var(--line);border-radius:12px;background:var(--card);
+    display:flex;flex-direction:column;align-items:center;padding:10px;gap:8px;user-select:none}
+  .item.dragging{opacity:.4;outline:2px dashed #60a5fa}
+  .thumb{border:1px solid #1e293b;border-radius:8px;background:#0b1220;display:grid;place-items:center;padding:4px}
+  .thumb canvas{display:block}
+  .toggle{display:flex;gap:6px;flex-wrap:wrap;justify-content:center}
+  .chip{font-size:11px;padding:5px 8px;border-radius:999px;border:1px solid #263244;background:var(--chip);cursor:pointer}
+  .removed{outline:2px dashed var(--danger)}
+  .removed::after{content:"Removed";position:absolute;bottom:0;left:0;right:0;text-align:center;background:#2b0f12;color:#fecaca;border-top:1px solid #fecaca;font-size:12px;padding:4px 0}
+  .footer{display:flex;align-items:center;justify-content:space-between;margin-top:14px}
+  progress{width:260px;height:16px}
+  .invis{display:none}
+
+  /* Zoom modal */
+  #zoomModal{position:fixed;inset:0;background:rgba(2,8,20,.85);display:none;align-items:center;justify-content:center;z-index:1000;flex-direction:column;padding:24px}
+  #zoomCanvas{max-width:96vw;max-height:86vh;background:#fff;border-radius:10px;box-shadow:0 18px 40px rgba(0,0,0,.45)}
+  #closeZoom{margin-top:12px;padding:8px 14px;border-radius:999px;background:var(--danger);color:#fff;border:none;cursor:pointer}
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <a class="back" href="index.html">← All tools</a>
+      <div class="bar">
+        <button id="btnLoadMain" class="primary">Load Main PDF</button>
+        <button id="btnAddToMain">Add PDF to Main</button>
+        <button id="btnParallel1">Load Parallel PDF 1</button>
+        <button id="btnParallel2">Load Parallel PDF 2</button>
+        <button id="btnRestoreAll" class="ghost">Restore All Main Pages</button>
+        <button id="btnExport" class="primary">Save Merged PDF</button>
+      </div>
+    </header>
+
+    <div class="hint">Build your main PDF by loading it, appending more PDFs, or adding pages from two page banks. Drag cards in <b>Main</b> to reorder. Zoom opens a 3× crisp view. Only Main pages are saved.</div>
+
+    <h2>Main PDF Pages (drag to reorder)</h2>
+    <div id="gridMain" class="grid" data-grid="main"></div>
+
+    <h2>Parallel PDF 1 Pages</h2>
+    <div id="gridP1" class="grid"></div>
+
+    <h2>Parallel PDF 2 Pages</h2>
+    <div id="gridP2" class="grid"></div>
+
+    <div class="footer">
+      <div class="hint" id="status">No file loaded.</div>
+      <div style="display:flex;align-items:center;gap:10px">
+        <progress id="prog" max="100" value="0" class="invis"></progress>
+        <span class="hint" id="progText"></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Zoom modal -->
+  <div id="zoomModal">
+    <canvas id="zoomCanvas"></canvas>
+    <button id="closeZoom">Close</button>
+  </div>
+
+  <!-- Hidden file inputs -->
+  <input type="file" id="fileMain" accept="application/pdf" class="invis" />
+  <input type="file" id="fileAddMain" accept="application/pdf" class="invis" />
+  <input type="file" id="fileP1" accept="application/pdf" class="invis" />
+  <input type="file" id="fileP2" accept="application/pdf" class="invis" />
+
+  <!-- libs -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+  <script>pdfjsLib.GlobalWorkerOptions.workerSrc="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js";</script>
+  <script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+
+  <script>
+  (function(){
+    const { PDFDocument, degrees } = PDFLib;
+
+    const mainSources = []; // [{bytes, pdfLibDoc}]
+    const mainPages   = []; // [{id, pageIndex, sourceIdx, removed, rotation, canvas, fromParallel?}]
+    const p1Source = {bytes:null, pdfLibDoc:null};
+    const p2Source = {bytes:null, pdfLibDoc:null};
+    const p1Pages = [], p2Pages = [];
+    let nextPageId = 1;
+
+    const gridMain = document.getElementById('gridMain');
+    const gridP1   = document.getElementById('gridP1');
+    const gridP2   = document.getElementById('gridP2');
+    const zoomModal  = document.getElementById('zoomModal');
+    const zoomCanvas = document.getElementById('zoomCanvas');
+    document.getElementById('closeZoom').onclick = ()=> zoomModal.style.display='none';
+    document.addEventListener('keydown', (e)=>{ if(e.key==='Escape') zoomModal.style.display='none'; });
+
+    function fileToArrayBuffer(file){
+      return new Promise((res,rej)=>{
+        const fr = new FileReader(); fr.onload=()=>res(fr.result); fr.onerror=rej; fr.readAsArrayBuffer(file);
+      });
+    }
+
+    // Hi-DPI thumb
+    async function renderThumbCanvas(page, targetWidth=180){
+      const dpr = window.devicePixelRatio || 1;
+      const unit = page.getViewport({ scale:1 });
+      const scale = (targetWidth / unit.width) * dpr;
+      const viewport = page.getViewport({ scale });
+
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d', { alpha:false });
+      canvas.width = Math.ceil(viewport.width);
+      canvas.height= Math.ceil(viewport.height);
+      canvas.style.width  = Math.round(viewport.width  / dpr) + 'px';
+      canvas.style.height = Math.round(viewport.height / dpr) + 'px';
+      await page.render({ canvasContext: ctx, viewport }).promise;
+      return canvas;
+    }
+
+    async function renderPDF(bytes, targetPagesArr, targetGrid, sourceStore, isMain){
+      const pdfjsDoc = await pdfjsLib.getDocument({data:bytes}).promise;
+
+      let sourceIdx = null;
+      if (isMain){ mainSources.push({bytes,pdfLibDoc:null}); sourceIdx = mainSources.length-1; }
+      else { sourceStore.bytes = bytes; }
+
+      for(let i=1;i<=pdfjsDoc.numPages;i++){
+        const page = await pdfjsDoc.getPage(i);
+        const canvas = await renderThumbCanvas(page, 180);
+        const pageObj = { id: nextPageId++, pageIndex:i-1, sourceIdx:isMain?sourceIdx:null, removed:false, rotation:0, canvas };
+        targetPagesArr.push(pageObj);
+        targetGrid.appendChild(makeCard(pageObj, targetPagesArr, isMain, sourceStore));
+      }
+    }
+
+    function makeCard(pg, arr, isMain, sourceStore){
+      const card = document.createElement('div');
+      card.className='item'; card.dataset.id=pg.id;
+
+      // Drag & drop (main only)
+      if (isMain){
+        card.draggable = true;
+        card.addEventListener('dragstart', e=>{
+          card.classList.add('dragging');
+          e.dataTransfer.setData('text/plain', String(pg.id));
+        });
+        card.addEventListener('dragend', ()=> card.classList.remove('dragging'));
+      }
+
+      const toggles = document.createElement('div');
+      toggles.className='toggle';
+
+      if(isMain){
+        const chipRemove = document.createElement('div');
+        chipRemove.className='chip'; chipRemove.textContent='Remove';
+        chipRemove.onclick=()=>{ pg.removed=!pg.removed; chipRemove.textContent=pg.removed?'Restore':'Remove'; card.classList.toggle('removed', pg.removed); };
+        toggles.appendChild(chipRemove);
+
+        const chipRotate = document.createElement('div');
+        chipRotate.className='chip'; chipRotate.textContent='Rotate';
+        chipRotate.onclick=()=>{ pg.rotation=(pg.rotation+90)%360; pg.canvas.style.transform=`rotate(${pg.rotation}deg)`; };
+        toggles.appendChild(chipRotate);
+      } else {
+        const chipAdd = document.createElement('div');
+        chipAdd.className='chip'; chipAdd.textContent='Add to Main';
+        chipAdd.onclick=()=>{
+          const clone = pg.canvas.cloneNode(true);
+          const newPg = { id: nextPageId++, pageIndex: pg.pageIndex, sourceIdx:null, removed:false, rotation:0, canvas:clone, fromParallel: sourceStore };
+          mainPages.push(newPg);
+          gridMain.appendChild(makeCard(newPg, mainPages, true));
+        };
+        toggles.appendChild(chipAdd);
+      }
+
+      const chipZoom = document.createElement('div');
+      chipZoom.className='chip'; chipZoom.textContent='Zoom';
+      chipZoom.onclick = async ()=>{
+        const dpr = window.devicePixelRatio || 1;
+        const zoomScale = 3 * dpr;
+        const sourceBytes = isMain ? (pg.fromParallel ? pg.fromParallel.bytes : mainSources[pg.sourceIdx].bytes)
+                                   : sourceStore.bytes;
+        const doc = await pdfjsLib.getDocument({data:sourceBytes}).promise;
+        const page = await doc.getPage(pg.pageIndex+1);
+        const viewport = page.getViewport({ scale: zoomScale, rotation: pg.rotation||0 });
+
+        zoomCanvas.width = Math.ceil(viewport.width);
+        zoomCanvas.height= Math.ceil(viewport.height);
+        const z = zoomCanvas.getContext('2d', {alpha:false});
+        await page.render({ canvasContext:z, viewport }).promise;
+
+        const cssW = viewport.width/dpr, cssH = viewport.height/dpr;
+        const fit = Math.min((innerWidth*0.96)/cssW, (innerHeight*0.86)/cssH);
+        zoomCanvas.style.width = (cssW*fit)+'px'; zoomCanvas.style.height='auto';
+        zoomModal.style.display='flex';
+      };
+      toggles.appendChild(chipZoom);
+
+      const thumb = document.createElement('div'); thumb.className='thumb'; thumb.appendChild(pg.canvas);
+      const meta  = document.createElement('div'); meta.className='meta'; meta.textContent=`Page ${pg.pageIndex+1}`;
+
+      card.appendChild(toggles); card.appendChild(thumb); card.appendChild(meta);
+      return card;
+    }
+
+    // Reorder via drag & drop within main grid
+    gridMain.addEventListener('dragover', e=>{
+      e.preventDefault();
+      const dragging = gridMain.querySelector('.item.dragging'); if(!dragging) return;
+      const afterElem = getDragAfterElement(gridMain, e.clientY, e.clientX);
+      if(afterElem==null) gridMain.appendChild(dragging);
+      else gridMain.insertBefore(dragging, afterElem);
+    });
+    gridMain.addEventListener('drop', ()=>{
+      // rebuild mainPages based on DOM order
+      const orderedIds = Array.from(gridMain.querySelectorAll('.item')).map(el=>+el.dataset.id);
+      const lookup = new Map(mainPages.map(p=>[p.id,p]));
+      const reordered = orderedIds.map(id=>lookup.get(id));
+      mainPages.length=0; reordered.forEach(p=>mainPages.push(p));
+    });
+    function getDragAfterElement(container, y, x){
+      const els = [...container.querySelectorAll('.item:not(.dragging)')];
+      return els.reduce((closest,child)=>{
+        const box = child.getBoundingClientRect();
+        const offset = y - box.top - box.height/2;
+        if (offset<0 && offset>closest.offset) return {offset, element:child};
+        else return closest;
+      }, {offset:Number.NEGATIVE_INFINITY}).element;
+    }
+
+    async function exportMerged(){
+      if(!mainPages.length){ alert('No main pages'); return; }
+      const out = await PDFDocument.create();
+      for (const src of mainSources) if(!src.pdfLibDoc) src.pdfLibDoc = await PDFDocument.load(src.bytes);
+      if (p1Source.bytes && !p1Source.pdfLibDoc) p1Source.pdfLibDoc = await PDFDocument.load(p1Source.bytes);
+      if (p2Source.bytes && !p2Source.pdfLibDoc) p2Source.pdfLibDoc = await PDFDocument.load(p2Source.bytes);
+
+      for (const pg of mainPages){
+        if (pg.removed) continue;
+        let srcDoc = pg.fromParallel===p1Source ? p1Source.pdfLibDoc
+                  : pg.fromParallel===p2Source ? p2Source.pdfLibDoc
+                  : mainSources[pg.sourceIdx].pdfLibDoc;
+        const [copied] = await out.copyPages(srcDoc, [pg.pageIndex]);
+        if (pg.rotation) copied.setRotation(degrees(pg.rotation));
+        out.addPage(copied);
+      }
+      const bytes = await out.save();
+      const url = URL.createObjectURL(new Blob([bytes],{type:'application/pdf'}));
+      const a=document.createElement('a'); a.href=url; a.download='merged.pdf'; document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(url);
+    }
+
+    // Buttons
+    document.getElementById('btnLoadMain').onclick  = ()=> document.getElementById('fileMain').click();
+    document.getElementById('btnAddToMain').onclick = ()=> document.getElementById('fileAddMain').click();
+    document.getElementById('btnParallel1').onclick = ()=> document.getElementById('fileP1').click();
+    document.getElementById('btnParallel2').onclick = ()=> document.getElementById('fileP2').click();
+    document.getElementById('btnExport').onclick    = exportMerged;
+    document.getElementById('btnRestoreAll').onclick= ()=>{
+      mainPages.forEach(p=>{p.removed=false;p.rotation=0;p.canvas.style.transform='rotate(0deg)';});
+      gridMain.querySelectorAll('.item').forEach(c=>{
+        c.classList.remove('removed');
+        c.querySelectorAll('.chip').forEach(ch=>{ if(ch.textContent==='Restore') ch.textContent='Remove'; });
+      });
+    };
+
+    // Inputs
+    document.getElementById('fileMain').onchange = async e=>{
+      const f=e.target.files[0]; if(!f) return;
+      mainPages.length=0; mainSources.length=0; gridMain.innerHTML='';
+      await renderPDF(await fileToArrayBuffer(f), mainPages, gridMain, null, true);
+      e.target.value='';
+    };
+    document.getElementById('fileAddMain').onchange = async e=>{
+      const f=e.target.files[0]; if(!f) return;
+      await renderPDF(await fileToArrayBuffer(f), mainPages, gridMain, null, true);
+      e.target.value='';
+    };
+    document.getElementById('fileP1').onchange = async e=>{
+      const f=e.target.files[0]; if(!f) return;
+      p1Pages.length=0; gridP1.innerHTML='';
+      await renderPDF(await fileToArrayBuffer(f), p1Pages, gridP1, p1Source, false);
+      e.target.value='';
+    };
+    document.getElementById('fileP2').onchange = async e=>{
+      const f=e.target.files[0]; if(!f) return;
+      p2Pages.length=0; gridP2.innerHTML='';
+      await renderPDF(await fileToArrayBuffer(f), p2Pages, gridP2, p2Source, false);
+      e.target.value='';
+    };
+  })();
+  </script>
+</body>
+</html>

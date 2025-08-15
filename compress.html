@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Compress PDF — PDF Studio</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0b1220; --fg:#e5e7eb; --muted:#9aa4b2; --panel:#0f172a; --line:#1f2937;
+    --card:#111827; --brand:#3b82f6; --accent:#a78bfa; --danger:#ef4444; --ok:#22c55e;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}
+  a{color:#93c5fd;text-decoration:none}
+  .wrap{max-width:1280px;margin:28px auto;padding:0 16px}
+  header{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
+  .bar{display:flex;gap:8px;flex-wrap:wrap}
+  button{border:1px solid #ffffff20;background:#ffffff10;color:#fff;padding:9px 14px;border-radius:10px;font-weight:600;cursor:pointer}
+  button.primary{background:var(--brand);border-color:transparent}
+  button.ghost{background:transparent}
+  button:disabled{opacity:.6;cursor:not-allowed}
+  .hint{font-size:12px;color:var(--muted)}
+  .layout{display:grid;grid-template-columns:300px 1fr;gap:16px}
+  @media (max-width: 980px){ .layout{grid-template-columns:1fr} }
+
+  /* Left controls */
+  .side{
+    background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px;
+    box-shadow:0 12px 28px rgba(0,0,0,.35); position:sticky; top:16px; height:max-content
+  }
+  .side h3{margin:0 0 8px}
+  .group{margin-bottom:12px}
+  .row{display:flex;align-items:center;justify-content:space-between;gap:8px}
+  input[type=range]{width:100%}
+  select, input[type=number]{
+    width:100%;padding:8px 10px;border-radius:10px;border:1px solid #223047;background:#0b1220;color:#fff
+  }
+  .preset{display:flex;gap:6px;flex-wrap:wrap}
+  .preset button{padding:6px 10px;border-radius:999px;border:1px solid #274060;background:#0b1220}
+  .preset button.active{background:var(--brand)}
+
+  /* Right preview area */
+  h2{margin:2px 0 8px;font-size:16px}
+  .docTitle{
+    margin:8px 2px; padding:8px 10px; border-radius:10px; background:#0c1322; border:1px solid #1f2a3c;
+    display:flex;align-items:center;gap:10px;font-weight:600
+  }
+  .grid{
+    background:var(--panel); border:1px solid var(--line); border-radius:14px;
+    padding:14px; display:grid; gap:12px;
+    grid-template-columns:repeat(auto-fill, minmax(180px,1fr));
+    box-shadow:0 12px 28px rgba(0,0,0,.35)
+  }
+  .item{position:relative;border:1px solid var(--line);border-radius:12px;background:var(--card);
+    display:flex;flex-direction:column;align-items:center;padding:10px;gap:8px}
+  .thumb{border:1px solid #1e293b;border-radius:8px;background:#0b1220;display:grid;place-items:center;padding:4px}
+  .thumb canvas{display:block}
+  .toggle{display:flex;gap:6px;flex-wrap:wrap;justify-content:center}
+  .chip{font-size:11px;padding:5px 8px;border-radius:999px;border:1px solid #263244;background:#0b1220;cursor:pointer}
+  .footer{display:flex;align-items:center;justify-content:space-between;margin-top:14px}
+  progress{width:320px;height:16px;accent-color:var(--brand)}
+  .invis{display:none}
+  .pct{font-variant-numeric:tabular-nums}
+
+  /* Zoom modal */
+  #zoomModal{position:fixed;inset:0;background:rgba(2,8,20,.85);display:none;align-items:center;justify-content:center;z-index:1000;flex-direction:column;padding:24px}
+  #zoomCanvas{max-width:96vw;max-height:86vh;background:#fff;border-radius:10px;box-shadow:0 18px 40px rgba(0,0,0,.45)}
+  #closeZoom{margin-top:12px;padding:8px 14px;border-radius:999px;background:var(--danger);color:#fff;border:none;cursor:pointer}
+  .tag{font-size:11px;color:#aab1bd}
+  .pill{font-size:11px;background:#0b1220;border:1px solid #2a3a50;padding:4px 8px;border-radius:999px}
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <a href="index.html">← All tools</a>
+      <div class="bar">
+        <button id="btnLoad" class="primary">Load PDF(s)</button>
+        <button id="btnCompress" class="primary" disabled>Compress & Download</button>
+      </div>
+    </header>
+
+    <div class="layout">
+      <!-- Controls -->
+      <aside class="side">
+        <h3>Compression</h3>
+
+        <div class="group">
+          <div class="tag">Presets</div>
+          <div class="preset" id="presetBar">
+            <button data-dpi="90"  data-q="0.55" data-gray="true">Smallest</button>
+            <button data-dpi="120" data-q="0.7"  class="active">Balanced</button>
+            <button data-dpi="150" data-q="0.82">High</button>
+            <button data-dpi="200" data-q="0.9">Max</button>
+          </div>
+        </div>
+
+        <div class="group">
+          <div class="tag">Resolution</div>
+          <div class="row">
+            <label for="dpi">DPI</label>
+            <input id="dpi" type="number" min="60" max="300" step="10" value="120" />
+          </div>
+          <div class="hint">Higher DPI = larger file & sharper output.</div>
+        </div>
+
+        <div class="group">
+          <div class="tag">Format</div>
+          <select id="fmt">
+            <option value="jpeg" selected>JPEG (lossy, small)</option>
+            <option value="png">PNG (lossless, bigger)</option>
+          </select>
+        </div>
+
+        <div class="group" id="jpegBox">
+          <div class="row">
+            <label for="quality">JPEG quality</label>
+            <span class="pill"><span id="qVal">0.70</span></span>
+          </div>
+          <input id="quality" type="range" min="0.4" max="0.95" step="0.01" value="0.7" />
+        </div>
+
+        <div class="group">
+          <div class="row">
+            <label for="gray">Grayscale</label>
+            <input id="gray" type="checkbox" />
+          </div>
+        </div>
+
+        <div class="group">
+          <div class="row">
+            <label for="subset">Compress only first</label>
+            <select id="subset">
+              <option value="all" selected>All pages</option>
+              <option value="1">1 page (quick test)</option>
+              <option value="3">3 pages</option>
+              <option value="5">5 pages</option>
+            </select>
+          </div>
+          <div class="hint">Try a few pages to gauge result & size, then run All.</div>
+        </div>
+
+        <div class="group">
+          <div class="row">
+            <label for="zipAll">Download as ZIP</label>
+            <input id="zipAll" type="checkbox" />
+          </div>
+          <div class="hint">Recommended on Windows to avoid SmartScreen on direct .pdf downloads.</div>
+        </div>
+
+        <div class="group">
+          <div class="tag">Notes</div>
+          <div class="hint">Pages are rasterized to images for reliable size reduction. Text won’t be selectable in the output.</div>
+        </div>
+      </aside>
+
+      <!-- Preview -->
+      <main>
+        <h2>Preview</h2>
+        <div id="grid"></div>
+
+        <div class="footer">
+          <div class="hint" id="status">No file loaded.</div>
+          <div style="display:flex;align-items:center;gap:10px">
+            <progress id="prog" max="100" value="0" class="invis"></progress>
+            <span class="hint pct" id="progText"></span>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <!-- Zoom modal -->
+  <div id="zoomModal">
+    <canvas id="zoomCanvas"></canvas>
+    <button id="closeZoom">Close</button>
+  </div>
+
+  <!-- File input (MULTIPLE) -->
+  <input id="file" type="file" accept="application/pdf" multiple hidden />
+
+  <!-- libs (order matters) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+  <script>pdfjsLib.GlobalWorkerOptions.workerSrc="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js";</script>
+  <script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+
+  <!-- Main -->
+  <script>
+  (function(){
+    const { PDFDocument } = PDFLib;
+
+    // Multiple docs
+    let docs = []; // [{ name, srcBytes, srcPdfDoc, pdfjsDoc, pages: [] }]
+
+    // UI refs
+    const fileBtn  = document.getElementById('btnLoad');
+    const fileIn   = document.getElementById('file');
+    const grid     = document.getElementById('grid');
+    const statusEl = document.getElementById('status');
+    const btnCompress = document.getElementById('btnCompress');
+
+    const dpiInput = document.getElementById('dpi');
+    const fmtSel   = document.getElementById('fmt');
+    const qRange   = document.getElementById('quality');
+    const qVal     = document.getElementById('qVal');
+    const grayCB   = document.getElementById('gray');
+    const subsetSel= document.getElementById('subset');
+    const jpegBox  = document.getElementById('jpegBox');
+    const zipAllInput = document.getElementById('zipAll');
+
+    const prog     = document.getElementById('prog');
+    const progText = document.getElementById('progText');
+
+    // Default ZIP on Windows
+    const isWindows = navigator.userAgent.includes('Windows');
+    if (zipAllInput) zipAllInput.checked = isWindows;
+
+    // Zoom modal
+    const zoomModal  = document.getElementById('zoomModal');
+    const zoomCanvas = document.getElementById('zoomCanvas');
+    document.getElementById('closeZoom').onclick = ()=> zoomModal.style.display='none';
+    document.addEventListener('keydown', e=>{ if(e.key==='Escape') zoomModal.style.display='none'; });
+
+    function setStatus(msg){ statusEl.textContent = msg; }
+    function showProgress(show, value=0, text=""){
+      prog.classList.toggle('invis', !show);
+      prog.value = value; progText.textContent = text ?? '';
+    }
+
+    // Save blob using File System Access API (avoids SmartScreen MOTW); fallback to classic download
+    async function saveBlobSmart(blob, suggestedName, mime){
+      if ('showSaveFilePicker' in window) {
+        try{
+          const ext = mime==='application/zip' ? '.zip' : '.pdf';
+          const desc = mime==='application/zip' ? 'ZIP archive' : 'PDF document';
+          const handle = await window.showSaveFilePicker({
+            suggestedName,
+            types: [{ description: desc, accept: { [mime]: [ext] } }]
+          });
+          const writable = await handle.createWritable();
+          await writable.write(blob);
+          await writable.close();
+          return;
+        }catch(err){
+          if (err && err.name === 'AbortError') return; // user canceled
+          console.error(err);
+        }
+      }
+      // Fallback: classic download (may trigger SmartScreen)
+      const url = URL.createObjectURL(blob);
+      const a=document.createElement('a'); a.href=url; a.download=suggestedName; document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(url);
+    }
+
+    // Hi-DPI thumb rendering
+    async function renderThumbCanvas(page, targetWidth=180){
+      const dpr = window.devicePixelRatio || 1;
+      const unit = page.getViewport({ scale:1 });
+      const scale = (targetWidth / unit.width) * dpr;
+      const viewport = page.getViewport({ scale });
+      const c = document.createElement('canvas');
+      const ctx = c.getContext('2d', { alpha:false });
+      c.width = Math.ceil(viewport.width);
+      c.height = Math.ceil(viewport.height);
+      c.style.width  = Math.round(viewport.width  / dpr) + 'px';
+      c.style.height = Math.round(viewport.height / dpr) + 'px';
+      await page.render({ canvasContext: ctx, viewport }).promise;
+      return c;
+    }
+
+    // UI: Load multiple files
+    fileBtn.onclick = ()=> fileIn.click();
+    fileIn.onchange = async (e)=>{
+      docs = [];
+      grid.innerHTML = '';
+      btnCompress.disabled = true;
+
+      const files = [...e.target.files];
+      if(!files.length) return;
+      setStatus(`Loading ${files.length} PDF(s)…`);
+
+      for(const f of files){
+        const srcBytes = await f.arrayBuffer();
+        const pdfjsDoc = await pdfjsLib.getDocument({data: srcBytes}).promise;
+        const srcPdfDoc = await PDFDocument.load(srcBytes);
+        const pages = [];
+
+        // Section title
+        const title = document.createElement('div');
+        title.className = 'docTitle';
+        title.textContent = f.name;
+        grid.appendChild(title);
+
+        // Grid for this doc
+        const section = document.createElement('div');
+        section.className = 'grid';
+        grid.appendChild(section);
+
+        for(let i=1;i<=pdfjsDoc.numPages;i++){
+          const page = await pdfjsDoc.getPage(i);
+          const canvas = await renderThumbCanvas(page, 180);
+          section.appendChild(makeCard(i-1, canvas, pdfjsDoc));
+          pages.push({ index:i-1, canvas });
+        }
+
+        docs.push({ name: f.name, srcBytes, srcPdfDoc, pdfjsDoc, pages, section });
+      }
+
+      btnCompress.disabled = false;
+      e.target.value='';
+      setStatus(`Loaded ${docs.length} PDF(s).`);
+    };
+
+    // Thumb card with zoom
+    function makeCard(idx, canvas, pdfjsDoc){
+      const card = document.createElement('div');
+      card.className='item';
+
+      const toggles = document.createElement('div');
+      toggles.className='toggle';
+      const zoomBtn = document.createElement('div');
+      zoomBtn.className='chip'; zoomBtn.textContent='Zoom';
+      zoomBtn.onclick = ()=> openZoom(idx, pdfjsDoc);
+      toggles.appendChild(zoomBtn);
+
+      const thumb = document.createElement('div'); thumb.className='thumb'; thumb.appendChild(canvas);
+      const meta  = document.createElement('div'); meta.className='meta'; meta.textContent=`Page ${idx+1}`;
+
+      card.appendChild(toggles); card.appendChild(thumb); card.appendChild(meta);
+      return card;
+    }
+
+    // 3× zoom render
+    async function openZoom(idx, pdfjsDoc){
+      const dpr = window.devicePixelRatio || 1;
+      const page = await pdfjsDoc.getPage(idx+1);
+      const viewport = page.getViewport({ scale: 3 * dpr });
+      zoomCanvas.width = Math.ceil(viewport.width);
+      zoomCanvas.height= Math.ceil(viewport.height);
+      const z = zoomCanvas.getContext('2d', {alpha:false});
+      await page.render({ canvasContext:z, viewport }).promise;
+      const cssW = viewport.width/dpr, cssH = viewport.height/dpr;
+      const fit = Math.min((innerWidth*0.96)/cssW,(innerHeight*0.86)/cssH);
+      zoomCanvas.style.width=(cssW*fit)+'px';
+      zoomCanvas.style.height='auto';
+      zoomModal.style.display='flex';
+    }
+
+    // Presets
+    document.getElementById('presetBar').addEventListener('click', e=>{
+      if(e.target.tagName!=='BUTTON') return;
+      document.querySelectorAll('#presetBar button').forEach(b=>b.classList.remove('active'));
+      e.target.classList.add('active');
+      dpiInput.value = e.target.dataset.dpi;
+      qRange.value   = e.target.dataset.q || qRange.value;
+      qVal.textContent = (+qRange.value).toFixed(2);
+      grayCB.checked = e.target.dataset.gray === 'true';
+    });
+
+    // Format switch
+    fmtSel.onchange = ()=> jpegBox.style.display = fmtSel.value==='jpeg' ? 'block' : 'none';
+    qRange.oninput  = ()=> qVal.textContent = (+qRange.value).toFixed(2);
+
+    // Grayscale utility
+    function toGrayscale(canvas){
+      const ctx = canvas.getContext('2d');
+      const img = ctx.getImageData(0,0,canvas.width,canvas.height);
+      const d = img.data;
+      for(let i=0;i<d.length;i+=4){
+        const y = 0.2126*d[i] + 0.7152*d[i+1] + 0.0722*d[i+2];
+        d[i]=d[i+1]=d[i+2]=y;
+      }
+      ctx.putImageData(img,0,0);
+      return canvas;
+    }
+
+    // Render one page to canvas at chosen DPI (full quality)
+    async function renderPageAtDPI(pdfjsDoc, idx, dpi){
+      const page = await pdfjsDoc.getPage(idx+1);
+      const viewport = page.getViewport({ scale: dpi/72 });
+      const c = document.createElement('canvas');
+      c.width = Math.ceil(viewport.width);
+      c.height= Math.ceil(viewport.height);
+      const ctx = c.getContext('2d',{alpha:false});
+      await page.render({ canvasContext: ctx, viewport }).promise;
+      return c;
+    }
+
+    function canvasToBlob(canvas, fmt, quality){
+      return new Promise(res=>{
+        if(fmt==='png') canvas.toBlob(res, 'image/png');
+        else canvas.toBlob(res, 'image/jpeg', quality);
+      });
+    }
+
+    // Compress multiple docs; optionally ZIP; save via Save File Picker if available
+    async function compressAndDownload(){
+      if(!docs.length) return;
+
+      const dpi  = Math.max(60, Math.min(300, parseInt(dpiInput.value||120,10)));
+      const fmt  = fmtSel.value; // 'jpeg'|'png'
+      const jpgQ = +qRange.value;
+      const gray = grayCB.checked;
+
+      const totalUnits = docs.reduce((sum, d)=>{
+        const pc = d.srcPdfDoc.getPageCount();
+        const subset = subsetSel.value==='all' ? pc : Math.min(parseInt(subsetSel.value,10), pc);
+        return sum + subset;
+      }, 0);
+      let doneUnits = 0;
+
+      const useZip = (zipAllInput && zipAllInput.checked) || docs.length > 1;
+      const zip = useZip ? new JSZip() : null;
+
+      showProgress(true, 0, 'Starting…');
+
+      for (let di=0; di<docs.length; di++){
+        const doc = docs[di];
+        const out = await PDFDocument.create();
+        const src = await PDFDocument.load(doc.srcBytes);
+        const pageCount = src.getPageCount();
+        const subset = subsetSel.value==='all' ? pageCount : Math.min(parseInt(subsetSel.value,10), pageCount);
+
+        for(let i=0;i<subset;i++){
+          // Rasterize + optional grayscale
+          let canvas = await renderPageAtDPI(doc.pdfjsDoc, i, dpi);
+          if (gray) canvas = toGrayscale(canvas);
+
+          // Encode
+          const blob = await canvasToBlob(canvas, fmt, jpgQ);
+          const bytes = await blob.arrayBuffer();
+
+          // Rebuild page
+          const img = (fmt==='png') ? await out.embedPng(bytes) : await out.embedJpg(bytes);
+          const srcPage = src.getPage(i);
+          const w = srcPage.getWidth(), h = srcPage.getHeight();
+          const page = out.addPage([w,h]);
+          page.drawImage(img, {x:0,y:0,width:w,height:h});
+
+          // Progress
+          doneUnits++;
+          const pct = Math.round(100 * doneUnits / totalUnits);
+          showProgress(true, pct, `File ${di+1}/${docs.length} — Page ${i+1}/${subset} — ${pct}%`);
+          await new Promise(r=>setTimeout(r,0));
+        }
+
+        const outBytes = await out.save({ useObjectStreams:true });
+        const safeName = doc.name.replace(/\.pdf$/i,'') + '.pdf';
+
+        if (useZip) {
+          zip.file(safeName, outBytes);
+        } else {
+          const pdfBlob = new Blob([outBytes], {type:'application/pdf'});
+          await saveBlobSmart(pdfBlob, safeName, 'application/pdf'); // <- avoids SmartScreen when supported
+        }
+      }
+
+      if (useZip) {
+        const zipBlob = await zip.generateAsync({type:'blob'});
+        await saveBlobSmart(zipBlob, 'compressed_pdfs.zip', 'application/zip'); // <- avoids SmartScreen when supported
+      }
+
+      showProgress(false, 0, '');
+      setStatus(`Done. Compressed ${docs.length} PDF(s).`);
+    }
+
+    btnCompress.onclick = compressAndDownload;
+  })();
+  </script>
+</body>
+</html>
